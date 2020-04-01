@@ -21,7 +21,7 @@ typedef struct GHB
 {
     // Miss address
     unsigned long long int miss_addr;
-    
+
     // Pointer to the previous miss address in GHB
     long long int link_pointer;
 
@@ -31,7 +31,7 @@ typedef struct index_table
 {
     // Miss address
     unsigned long long int miss_addr;
-    
+
     // Pointer to the GHB
     long long int pointer;
 
@@ -52,7 +52,6 @@ void l2_prefetcher_initialize(int cpu_num)
 
     // Set head pointer to 0
     global_pointer = 0;   
-
 }
 
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
@@ -84,7 +83,19 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 long long int next_pointer = (current_pointer+1) % GHB_SIZE;
                 long long int temp_addr = GHB[next_pointer].miss_addr;
                 hash[temp_addr]++;
-                current_pointer = GHB[current_pointer].link_pointer; 
+                current_pointer = GHB[current_pointer].link_pointer;
+            }
+
+            /* Find the highest number of occurances in the markov prefetch*/
+            int max_count = 0;
+            unsigned long long int dataAddress = 0;
+            for(auto i: hash)
+            {
+                if(max_count < i.second)
+                {
+                    dataAddress = i.first;
+                    max_count = i.second;
+                }
             }
         }
         else
@@ -100,13 +111,12 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         
         /*Add global_pointer*/
         global_pointer++;
-
     }
     else
     {
         /* code */
     }
-    
+
 
 
 }
