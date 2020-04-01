@@ -21,7 +21,7 @@ typedef struct GHB
 {
     // Miss address
     unsigned long long int miss_addr;
-    
+
     // Pointer to the previous miss address in GHB
     unsigned long long int link_pointer;
 
@@ -31,7 +31,7 @@ typedef struct index_table
 {
     // Miss address
     unsigned long long int miss_addr;
-    
+
     // Pointer to the GHB
     unsigned long long int pointer;
 
@@ -51,7 +51,7 @@ void l2_prefetcher_initialize(int cpu_num)
 
 
     // Set head pointer to 0
-    head_pointer = 0;   
+    head_pointer = 0;
 
 }
 
@@ -68,7 +68,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     {
         /* Access the index table to check if there is such an address */
         if(index_table[addr_index].missaddr == ip)
-        {   
+        {
             /* If there is an address, get pointer to the GHB */
             current_pointer = index_table[addr_index].pointer;
 
@@ -81,25 +81,37 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             {
                 temp_addr = GHB[current_pointer+1].miss_addr;
                 hash[temp_addr]++;
-                current_pointer = GHB[current_pointer].link_pointer; 
+                current_pointer = GHB[current_pointer].link_pointer;
             }
+
+            /* Find the highest number of occurances in the markov prefetch*/
+            int max_count = 0;
+            unsigned long long int dataAddress = 0;
+            for(auto i: hash)
+            {
+                if(max_count < i.second)
+                {
+                    dataAddress = i.first;
+                    max_count = i.second;
+                }
+            }
+
+            
+
         }
         else
         {
             /* If there is no such address, update the index table */
             index_table[addr_index].missaddr = ip;
-            index_table[addr_index].pointer = head_pointer; 
+            index_table[addr_index].pointer = head_pointer;
         }
-        
-        
-
 
     }
     else
     {
         /* code */
     }
-    
+
 
 
 }
