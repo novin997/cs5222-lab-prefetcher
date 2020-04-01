@@ -78,18 +78,19 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             /* Iterate the linked list of the GHB to get the Markov Prefetching */
             /* Iterate until the first pointer or if the address does not match */
             /* The Hashmap will count the highest occurance of the next prefetch address */
-            while(GHB[current_pointer].link_pointer != current_pointer || addr != GHB[current_pointer].missaddr)
+            
+            do
             {
                 long long int next_pointer = (current_pointer+1) % GHB_SIZE;
                 long long int temp_addr = GHB[next_pointer].miss_addr;
                 hash[temp_addr]++;
                 current_pointer = GHB[current_pointer].link_pointer;
-            }
+            }while(GHB[current_pointer].link_pointer != current_pointer || addr != GHB[current_pointer].missaddr)
 
-            /* Find the highest number of occurances in the markov prefetch*/
+            /* Find the highest number of occurances in the markov prefetch */
             int max_count = 0;
             unsigned long long int dataAddress = 0;
-            for(auto i: hash)
+            for(auto i : hash)
             {
                 if(max_count < i.second)
                 {
@@ -97,10 +98,17 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                     max_count = i.second;
                 }
             }
+
+            /* Prefetch the address the highest number of occurances */
+
+
+            /* Update index table to the current the pointer */
+            index_table[ip_index].pointer = global_pointer;
+
         }
         else
         {
-            /* If there is no such address, update the index table and GHB*/
+            /* If there is no such address, update the index table and GHB */
             index_table[ip_index].missaddr = addr;
             index_table[ip_index].pointer = global_pointer;
 
@@ -109,8 +117,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 
         }
         
-        /*Add global_pointer*/
-        global_pointer++;
+        /* Add global_pointer */
+        global_pointer = (global_pointer+1) % GHB_SIZE;
     }
     else
     {
