@@ -23,7 +23,7 @@ typedef struct GHB
     unsigned long long int miss_addr;
     
     // Pointer to the previous miss address in GHB
-    unsigned long long int link_pointer;
+    long long int link_pointer;
 
 } GHB_t;
 
@@ -33,13 +33,13 @@ typedef struct index_table
     unsigned long long int miss_addr;
     
     // Pointer to the GHB
-    unsigned long long int pointer;
+    long long int pointer;
 
 } index_table_t;
 
 GHB_t GHB[GHB_SIZE];
 index_table_t index_table[INDEX_SIZE];
-unsigned long long int head_pointer;
+long long int global_pointer;
 
 void l2_prefetcher_initialize(int cpu_num)
 {
@@ -51,7 +51,7 @@ void l2_prefetcher_initialize(int cpu_num)
 
 
     // Set head pointer to 0
-    head_pointer = 0;   
+    global_pointer = 0;   
 
 }
 
@@ -59,40 +59,47 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 {
     // uncomment this line to see all the information available to make prefetch decisions
     // printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
-    unsigned long long int addr_index = addr & INDEX_MASK;
-    unsigned long long int current_pointer = 0;
-    unsigned long long int end_pointer = 0;
+    unsigned long long int ip_index = ip & INDEX_MASK;
+    long long int current_pointer = 0;
+    long long int end_pointer = 0;
     unordered_map<unsigned long long int,int> hash;
 
     if(cache_hit == 0)
     {
         /* Access the index table to check if there is such an address */
-        if(index_table[addr_index].missaddr == ip)
+        if(index_table[ip_index].missaddr == addr)
         {   
             /* If there is an address, get pointer to the GHB */
-            current_pointer = index_table[addr_index].pointer;
+            current_pointer = index_table[ip_index].pointer;
 
             /* Add the miss address to the GHB */
-            GHB[head_pointer].miss_addr = ip;
-            GHB[head_pointer].link_pointer = current_pointer;
+            GHB[global_pointer].miss_addr = addr;
+            GHB[global_pointer].link_pointer = current_pointer;
 
             /* Iterate the linked list of the GHB to get the Markov Prefetching */
-            while(GHB[current_pointer].link_pointer != 0 || current_pointer != head_pointer)
+            /* Iterate until the first pointer or if the address does not match */
+            /* The Hashmap will count the highest occurance of the next prefetch address */
+            while(GHB[current_pointer].link_pointer != current_pointer || addr != GHB[current_pointer].missaddr)
             {
-                temp_addr = GHB[current_pointer+1].miss_addr;
+                long long int next_pointer = (current_pointer+1) % GHB_SIZE;
+                long long int temp_addr = GHB[next_pointer].miss_addr;
                 hash[temp_addr]++;
                 current_pointer = GHB[current_pointer].link_pointer; 
             }
         }
         else
         {
-            /* If there is no such address, update the index table */
-            index_table[addr_index].missaddr = ip;
-            index_table[addr_index].pointer = head_pointer; 
+            /* If there is no such address, update the index table and GHB*/
+            index_table[ip_index].missaddr = addr;
+            index_table[ip_index].pointer = global_pointer;
+
+            GHB[global_pointer].missaddr = addr;
+            GHB[global_pointer].link_pointer = global_pointer;
+
         }
         
-        
-
+        /*Add global_pointer*/
+        global_pointer++;
 
     }
     else
