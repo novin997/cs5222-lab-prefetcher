@@ -54,11 +54,11 @@ void l2_prefetcher_initialize(int cpu_num)
         GHB[i].link_pointer = -1;
     }
 
-    // Create Global History Buffer table
-    for(int i = 0; i < GHB_SIZE; i++)
+    // Create Index table
+    for(int i = 0; i < INDEX_SIZE; i++)
     {
-        GHB[i].miss_addr = 0;
-        GHB[i].link_pointer = -1;
+        index_table[i].miss_addr = 0;
+        index_table[i].pointer = -1;
     }
 
     // Set head pointer to 0

@@ -13,9 +13,10 @@
 #include "../inc/prefetcher.h"
 #include <unordered_map>
 
+#define SET_ASSOCIATION 2
+
 #define GHB_SIZE 1024
 #define INDEX_SIZE 1 << 10
-#define INDEX_MASK INDEX_SIZE-1
 
 typedef struct GHB
 {
@@ -41,6 +42,8 @@ GHB_t GHB[GHB_SIZE];
 index_table_t index_table[INDEX_SIZE];
 long long int global_pointer;
 
+unsigned long long int index_mask = (INDEX_SIZE/SET_ASSOCIATION)-1;
+
 void l2_prefetcher_initialize(int cpu_num)
 {
     printf("No Prefetching\n");
@@ -54,11 +57,11 @@ void l2_prefetcher_initialize(int cpu_num)
         GHB[i].link_pointer = -1;
     }
 
-    // Create Global History Buffer table
-    for(int i = 0; i < GHB_SIZE; i++)
+    // Create Index table
+    for(int i = 0; i < INDEX_SIZE; i++)
     {
-        GHB[i].miss_addr = 0;
-        GHB[i].link_pointer = -1;
+        index_table[i].miss_addr = 0;
+        index_table[i].pointer = -1;
     }
 
     // Set head pointer to 0
@@ -69,7 +72,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 {
     // uncomment this line to see all the information available to make prefetch decisions
     // printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
-    unsigned long long int ip_index = ip & INDEX_MASK;
+    unsigned long long int ip_index = ip & index_mask;
     long long int current_pointer = 0;
     std::unordered_map<unsigned long long int, int> hash_table;
 
