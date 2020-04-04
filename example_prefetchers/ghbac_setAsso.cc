@@ -43,8 +43,9 @@ GHB_t GHB[GHB_SIZE];
 index_table_t index_table[INDEX_SIZE];
 long long int global_pointer;
 
-unsigned long long int index_mask = (INDEX_SIZE/SET_ASSOCIATION)-1;
-std::queue <int> lru[INDEX_SIZE/SET_ASSOCIATION];
+unsigned long long int set_size = INDEX_SIZE/SET_ASSOCIATION;
+unsigned long long int index_mask = set_size-1;
+std::queue <int> lru[set_size];
 
 void l2_prefetcher_initialize(int cpu_num)
 {
@@ -67,7 +68,7 @@ void l2_prefetcher_initialize(int cpu_num)
     }
 
     // Set head pointer to 0
-    global_pointer = 0;   
+    global_pointer = 0;
 }
 
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
@@ -82,12 +83,12 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     if(cache_hit == 0)
     {
         /* Access the index table to check if there is such an address */
-        for(int j=1; j<=SET_ASSOCIATION; j++)
+        for(int j=0; j<SET_ASSOCIATION; j++)
         {
-            if(index_table[ip_index*j].miss_addr == addr)
-            {   
+            if(index_table[ip_index+j*(INDEX_SIZE/SET_ASSOCIATION)].miss_addr == addr)
+            {
                 /* If there is an address, get pointer to the GHB */
-                current_pointer = index_table[ip_index*j].pointer;
+                current_pointer = index_table[ip_index+j*index_mask].pointer;
 
                 /* Add the miss address to the GHB */
                 GHB[global_pointer].miss_addr = addr;
@@ -120,8 +121,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 l2_prefetch_line(0, addr, dataAddress, FILL_L2);
 
                 /* Update index table to the current the pointer */
-                index_table[ip_index*j].pointer = global_pointer;
-                
+                index_table[ip_index+j*index_mask].pointer = global_pointer;
+
                 /* Update the LRU Queue */
                 lru[ip_index].push(j-1);
                 if(lru[ip_index].size() >= SET_ASSOCIATION)
@@ -132,11 +133,11 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 break;
             }
             //If the index block is empty put the addr into it
-            else if(index_table[ip_index*j].pointer == -1)
+            else if(index_table[ip_index+j*index_mask].pointer == -1)
             {
                 /* If there is no such address, update the index table and GHB */
-                index_table[ip_index*j].miss_addr = addr;
-                index_table[ip_index*j].pointer = global_pointer;
+                index_table[ip_index+j*index_mask].miss_addr = addr;
+                index_table[ip_index+j*index_mask].pointer = global_pointer;
 
                 GHB[global_pointer].miss_addr = addr;
                 GHB[global_pointer].link_pointer = global_pointer;
@@ -149,7 +150,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
         }
 
-        //Look through Queue to find the LRU and replace the contents 
+        //Look through Queue to find the LRU and replace the contents
         if(add_addr == 0)
         {
             int j;
@@ -158,8 +159,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             lru[ip_index].pop();
             lru[ip_index].push(j);
 
-            index_table[ip_index*j].miss_addr = addr;
-            index_table[ip_index*j].pointer = global_pointer;
+            index_table[ip_index+j*index_mask].miss_addr = addr;
+            index_table[ip_index+j*index_mask].pointer = global_pointer;
 
             GHB[global_pointer].miss_addr = addr;
             GHB[global_pointer].link_pointer = global_pointer;
