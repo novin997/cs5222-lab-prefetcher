@@ -18,6 +18,8 @@
 #define INDEX_SIZE 1 << 12
 #define INDEX_MASK INDEX_SIZE-1
 
+//#define DEBUG
+
 typedef struct GHB
 {
     // Miss address
