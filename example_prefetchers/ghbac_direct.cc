@@ -69,7 +69,6 @@ void l2_prefetcher_initialize(int cpu_num)
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
 {
     // uncomment this line to see all the information available to make prefetch decisions
-    // printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
     unsigned long long int ip_index = ip & INDEX_MASK;
     unsigned long long int temp_addr;
     long long int current_pointer = 0;
@@ -113,8 +112,9 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
 
             /* Prefetch the address the highest number of occurances */
+            std::cout << "Prefetching Memory" << std::endl;
             int temp = l2_prefetch_line(0, addr, dataAddress, FILL_L2);
-            std::cout << temp << std::endl;
+            std::cout << temp << " " << global_pointer << std::endl;
 
             /* Update index table to the current the pointer */
             index_table[ip_index].pointer = global_pointer;

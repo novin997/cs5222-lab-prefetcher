@@ -16,8 +16,10 @@
 #include <iostream>
 
 #define GHB_SIZE 256
-#define INDEX_SIZE 1 << 12
+#define INDEX_SIZE 4096
 #define INDEX_MASK INDEX_SIZE-1
+
+//#define DEBUG
 
 typedef struct GHB
 {
@@ -60,7 +62,7 @@ void l2_prefetcher_initialize(int cpu_num)
         GHB[i].delta = 0;
     }
 
-   // Create Index table
+    // Create Index table
     for(int i = 0; i < INDEX_SIZE; i++)
     {
         index_table[i].delta = 0;
@@ -79,19 +81,30 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     long long int current_pointer = 0;
     long long int prev_pointer = (global_pointer-1) % GHB_SIZE;
     long long int delta_offset;
-    std::pair <long long int,long long int> delta_corr;   
-    std::unordered_map<unsigned long long int, int> hash_table;
+    std::pair <long long int,long long int> delta_corr;
 
     delta_corr.first = 0;
     delta_corr.second = 0;
 
     if(cache_hit == 0)
     {
+        #ifdef DEBUG
+        
+        printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+        std::cout << "Printing GHB Table" << std::endl;
+        for(int i = 0; i < GHB_SIZE; i++)
+        {   
+            std::cout << std::hex << GHB[i].miss_addr << " " << GHB[i].link_pointer << " " << GHB[i].delta << std::endl;
+        } 
+        std::cout << "Printing index Table" << std::endl;
+        std::cout << index_table[ip_index].delta << " " << index_table[ip_index].pointer << " " << ip_index << " " << INDEX_MASK << std::endl;
+        
+        #endif
+
         if(index_table[ip_index].pointer == -1)
         {
             GHB[global_pointer].miss_addr = addr;
             GHB[global_pointer].link_pointer = global_pointer;
-
         }
         else
         {
@@ -103,7 +116,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         if(prev_pointer < 0)
             prev_pointer += GHB_SIZE;
 
-        if(GHB[global_pointer].link_pointer != -1 && GHB[global_pointer].link_pointer != -1)
+        if(GHB[global_pointer].link_pointer != -1 && GHB[prev_pointer].link_pointer != -1)
         {
             GHB[global_pointer].delta = GHB[global_pointer].miss_addr - GHB[prev_pointer].miss_addr;     
         }
@@ -162,6 +175,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
             current_pointer = GHB[current_pointer].link_pointer;
         }
+        
+        //std::cout << count << std::endl;
 
         if(count == 4)
         {
