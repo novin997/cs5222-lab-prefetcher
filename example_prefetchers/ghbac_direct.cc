@@ -12,9 +12,10 @@
 #include <stdio.h>
 #include "../inc/prefetcher.h"
 #include <unordered_map>
+#include <iostream>
 
-#define GHB_SIZE 1024
-#define INDEX_SIZE 1 << 10
+#define GHB_SIZE 256
+#define INDEX_SIZE 1 << 12
 #define INDEX_MASK INDEX_SIZE-1
 
 typedef struct GHB
@@ -70,7 +71,9 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     // uncomment this line to see all the information available to make prefetch decisions
     // printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
     unsigned long long int ip_index = ip & INDEX_MASK;
+    unsigned long long int temp_addr;
     long long int current_pointer = 0;
+    long long int next_pointer;
     std::unordered_map<unsigned long long int, int> hash_table;
 
     if(cache_hit == 0)
@@ -91,8 +94,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             
             do
             {
-                long long int next_pointer = (current_pointer+1) % GHB_SIZE;
-                long long int temp_addr = GHB[next_pointer].miss_addr;
+                next_pointer = (current_pointer+1) % GHB_SIZE;
+                temp_addr = GHB[next_pointer].miss_addr;
                 hash_table[temp_addr]++;
                 current_pointer = GHB[current_pointer].link_pointer;
             }while(GHB[current_pointer].link_pointer != current_pointer || addr != GHB[current_pointer].miss_addr);
@@ -110,7 +113,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
 
             /* Prefetch the address the highest number of occurances */
-            l2_prefetch_line(0, addr, dataAddress, FILL_L2);
+            int temp = l2_prefetch_line(0, addr, dataAddress, FILL_L2);
+            std::cout << temp << std::endl;
 
             /* Update index table to the current the pointer */
             index_table[ip_index].pointer = global_pointer;

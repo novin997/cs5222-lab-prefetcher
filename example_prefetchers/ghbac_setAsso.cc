@@ -13,11 +13,13 @@
 #include <assert.h>
 #include "../inc/prefetcher.h"
 #include <unordered_map>
-#include <queue>
+#include <deque>
+#include <iostream>
 
 #define GHB_SIZE 1024
-#define INDEX_SIZE 1 << 10
-#define SET_ASSOCIATION 2
+#define INDEX_SIZE 1024
+#define SET_ASSOCIATION 4
+#define SET_SIZE INDEX_SIZE/SET_ASSOCIATION
 
 typedef struct GHB
 {
@@ -43,9 +45,7 @@ GHB_t GHB[GHB_SIZE];
 index_table_t index_table[INDEX_SIZE];
 long long int global_pointer;
 
-unsigned long long int set_size = INDEX_SIZE/SET_ASSOCIATION;
-unsigned long long int index_mask = set_size-1;
-std::queue <int> lru[set_size];
+std::deque<int> lru[SET_SIZE];
 
 void l2_prefetcher_initialize(int cpu_num)
 {
@@ -74,21 +74,24 @@ void l2_prefetcher_initialize(int cpu_num)
 void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned long long int ip, int cache_hit)
 {
     // uncomment this line to see all the information available to make prefetch decisions
-    //printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
-    unsigned long long int ip_index = ip & index_mask;
+    unsigned long long int ip_index = ip & (SET_SIZE-1);
     long long int current_pointer = 0;
     std::unordered_map<unsigned long long int, int> hash_table;
     bool add_addr = 0;
+    bool addr_found = 0;
 
     if(cache_hit == 0)
     {
+        printf("(0x%llx 0x%llx %d %d %d) ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+        // printf("%llu\n",global_pointer);
         /* Access the index table to check if there is such an address */
         for(int j=0; j<SET_ASSOCIATION; j++)
         {
-            if(index_table[ip_index+j*(INDEX_SIZE/SET_ASSOCIATION)].miss_addr == addr)
+            if(index_table[ip_index+j*SET_SIZE].miss_addr == addr)
             {
-                /* If there is an address, get pointer to the GHB */
-                current_pointer = index_table[ip_index+j*index_mask].pointer;
+                printf("test");
+                 /* If there is an address, get pointer to the GHB */
+                current_pointer = index_table[ip_index+j*SET_SIZE].pointer;
 
                 /* Add the miss address to the GHB */
                 GHB[global_pointer].miss_addr = addr;
@@ -121,53 +124,66 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 l2_prefetch_line(0, addr, dataAddress, FILL_L2);
 
                 /* Update index table to the current the pointer */
-                index_table[ip_index+j*index_mask].pointer = global_pointer;
+                index_table[ip_index+j*SET_SIZE].pointer = global_pointer;
 
                 /* Update the LRU Queue */
-                lru[ip_index].push(j-1);
-                if(lru[ip_index].size() >= SET_ASSOCIATION)
-                   lru[ip_index].pop() ;
-                add_addr = 1;
+                for(std::deque<int>::iterator it = lru[ip_index].begin(); it != lru[ip_index].end();)
+                {
+                    if(*it == j)
+                        it = lru[ip_index].erase(it);
+                    else
+                        it++;
+                }
+
+                lru[ip_index].push_front(j);
+                
+                // lru[ip_index].push(j-1);
+                // if(lru[ip_index].size() > SET_ASSOCIATION)
+                //     lru[ip_index].pop() ;
 
                 //Exit out the for loop as the block address has been found
-                break;
+                global_pointer = (global_pointer+1) % GHB_SIZE;
+                return;
             }
-            //If the index block is empty put the addr into it
-            else if(index_table[ip_index+j*index_mask].pointer == -1)
+        }
+
+        /* Look for any empty slots in the index table */
+        for(int j=0; j<SET_ASSOCIATION; j++)
+        {
+            if(index_table[ip_index+j*SET_SIZE].pointer == -1)
             {
                 /* If there is no such address, update the index table and GHB */
-                index_table[ip_index+j*index_mask].miss_addr = addr;
-                index_table[ip_index+j*index_mask].pointer = global_pointer;
-
+                index_table[ip_index+j*SET_SIZE].miss_addr = addr;
+                index_table[ip_index+j*SET_SIZE].pointer = global_pointer;
+                
                 GHB[global_pointer].miss_addr = addr;
                 GHB[global_pointer].link_pointer = global_pointer;
 
-                /* Update the LRU Queue */
-                lru[ip_index].push(j-1);
-                if(lru[ip_index].size() >= SET_ASSOCIATION)
-                   lru[ip_index].pop();
-                add_addr = 1;
+                lru[ip_index].push_front(j);
+
+                global_pointer = (global_pointer+1) % GHB_SIZE;
+                return;
             }
         }
 
-        //Look through Queue to find the LRU and replace the contents
-        if(add_addr == 0)
-        {
-            int j;
-            j = lru[ip_index].front();
+        /* Look LRU Queue to determine which block of memory to remove */
+        int j = 0;
+        j = lru[ip_index].back();
+        
+        printf("%llu\n",global_pointer);
+        printf("%d\n",j);
+        lru[ip_index].push_front(j);
+        if(lru[ip_index].size() > SET_ASSOCIATION)
+            lru[ip_index].pop_back();
 
-            lru[ip_index].pop();
-            lru[ip_index].push(j);
+        index_table[ip_index+j*SET_SIZE].miss_addr = addr;
+        index_table[ip_index+j*SET_SIZE].pointer = global_pointer;
 
-            index_table[ip_index+j*index_mask].miss_addr = addr;
-            index_table[ip_index+j*index_mask].pointer = global_pointer;
+        GHB[global_pointer].miss_addr = addr;
+        GHB[global_pointer].link_pointer = global_pointer;
 
-            GHB[global_pointer].miss_addr = addr;
-            GHB[global_pointer].link_pointer = global_pointer;
-        }
-
-        /* Add global_pointer */
         global_pointer = (global_pointer+1) % GHB_SIZE;
+        return;
     }
     else
     {
@@ -178,7 +194,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 void l2_cache_fill(int cpu_num, unsigned long long int addr, int set, int way, int prefetch, unsigned long long int evicted_addr)
 {
     // uncomment this line to see the information available to you when there is a cache fill event
-    printf("0x%llx %d %d %d 0x%llx\n", addr, set, way, prefetch, evicted_addr);
+    // printf("0x%llx %d %d %d 0x%llx\n", addr, set, way, prefetch, evicted_addr);
 }
 
 void l2_prefetcher_heartbeat_stats(int cpu_num)
