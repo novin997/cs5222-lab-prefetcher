@@ -16,15 +16,16 @@
 #include <iostream>
 
 #define GHB_SIZE 256
-#define INDEX_SIZE 4096
+#define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
 
 //#define DEBUG
+//#define TEST
 
 typedef struct GHB
 {
     // Miss address
-    unsigned long long int miss_addr;
+    long long int miss_addr;
 
     // Pointer to the previous miss address in GHB
     long long int link_pointer;
@@ -89,15 +90,15 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     if(cache_hit == 0)
     {
         #ifdef DEBUG
-        
+
         printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
         std::cout << "Printing GHB Table" << std::endl;
         for(int i = 0; i < GHB_SIZE; i++)
         {   
-            std::cout << std::hex << GHB[i].miss_addr << " " << GHB[i].link_pointer << " " << GHB[i].delta << std::endl;
+            std::cout << std::hex << i << " " << GHB[i].miss_addr << " " << GHB[i].link_pointer << " " << GHB[i].delta << std::endl;
         } 
         std::cout << "Printing index Table" << std::endl;
-        std::cout << index_table[ip_index].delta << " " << index_table[ip_index].pointer << " " << ip_index << " " << INDEX_MASK << std::endl;
+        std::cout << index_table[ip_index].delta << " " << index_table[ip_index].pointer << " " << ip_index << " " << global_pointer << std::endl;
         
         #endif
 
@@ -128,9 +129,40 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         // Find the first pair of delta correleration
         current_pointer = global_pointer;
         int count = 0;
-        
+
+        #ifdef DEBUG 
+
+        printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+        std::cout << "Printing GHB Table" << std::endl;
+        for(int i = 0; i < GHB_SIZE; i++)
+        {   
+            std::cout << std::hex << i << " " << GHB[i].miss_addr << " " << GHB[i].link_pointer << " " << GHB[i].delta << std::endl;
+        } 
+        std::cout << "Printing index Table" << std::endl;
+        std::cout << index_table[ip_index].delta << " " << index_table[ip_index].pointer << " " << ip_index << " " << global_pointer << std::endl;
+
+        #endif
+
+        unsigned long long int distance = 0;
+
         while(current_pointer != GHB[current_pointer].link_pointer)
         {
+            #ifdef TEST 
+            std::cout << distance << std::endl;
+            #endif 
+
+            if(current_pointer > GHB[current_pointer].link_pointer)
+            {
+                distance += current_pointer-GHB[current_pointer].link_pointer;
+            }
+            else
+            {
+                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
+            }
+
+            if(distance >= GHB_SIZE)
+                break;
+            
             if(count == 0)
             {
                 delta_corr.second = GHB[current_pointer].delta;
@@ -144,16 +176,40 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 current_pointer = GHB[current_pointer].link_pointer;
                 break;
             }
+
+            #ifdef TEST
+
+            printf("stuck in loop 1\n");
+
+            #endif
         }
 
+         
         // Find the next delta pattern that correlate the pair of delta values
         while(current_pointer != GHB[current_pointer].link_pointer)
         {
+            #ifdef TEST   
+            std::cout << current_pointer << std::endl;
+            std::cout << distance << std::endl;
+            #endif
+
+            if(current_pointer > GHB[current_pointer].link_pointer)
+            {
+                distance += current_pointer-GHB[current_pointer].link_pointer;
+            }
+            else
+            {
+                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
+            }
+
+            if(distance >= GHB_SIZE)
+                break;
+
             if(count == 2)
             {
                 if(GHB[current_pointer].delta == delta_corr.second)
                 {
-                    delta_offset = GHB[current_pointer+1].delta;
+                    delta_offset = GHB[(current_pointer+1) % GHB_SIZE].delta;
                     count++;
                 }    
             }
@@ -166,21 +222,27 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 }
                 else if(GHB[current_pointer].delta == delta_corr.second)
                 {
-                    delta_offset = GHB[current_pointer+1].delta;
+                    delta_offset = GHB[(current_pointer+1) % GHB_SIZE].delta;
                 }
                 else
                 {
                     count--;
                 }
             }
+
+            #ifdef TEST            
+            printf("stuck in loop 2\n");
+            #endif
+
             current_pointer = GHB[current_pointer].link_pointer;
+            
         }
         
         //std::cout << count << std::endl;
 
         if(count == 4)
         {
-            int temp = l2_prefetch_line(0, addr, (long long int)GHB[global_pointer].miss_addr + delta_offset, FILL_L2);
+            int temp = l2_prefetch_line(0, addr, GHB[global_pointer].miss_addr + delta_offset, FILL_L2);
             std::cout << temp << std::endl;
         }
         else
@@ -188,8 +250,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             
         }
          
-        index_table[global_pointer].delta = GHB[global_pointer].delta;
-        index_table[global_pointer].pointer = global_pointer;
+        index_table[ip_index].delta = GHB[global_pointer].delta;
+        index_table[ip_index].pointer = global_pointer;
         
         /* Add global_pointer */
         global_pointer = (global_pointer+1) % GHB_SIZE;
