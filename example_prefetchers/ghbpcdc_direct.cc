@@ -16,7 +16,7 @@
 #include <iostream>
 
 #define GHB_SIZE 256
-#define INDEX_SIZE 256
+#define INDEX_SIZE 1024
 #define INDEX_MASK INDEX_SIZE-1
 
 //#define DEBUG
@@ -104,12 +104,12 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 
         if(index_table[ip_index].pointer == -1)
         {
-            GHB[global_pointer].miss_addr = addr;
+            GHB[global_pointer].miss_addr = addr >> 6;
             GHB[global_pointer].link_pointer = global_pointer;
         }
         else
         {
-            GHB[global_pointer].miss_addr = addr;
+            GHB[global_pointer].miss_addr = addr >> 6;
             GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
         }
 
@@ -242,7 +242,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 
         if(count == 4)
         {
-            int temp = l2_prefetch_line(0, addr, GHB[global_pointer].miss_addr + delta_offset, FILL_L2);
+            int temp = l2_prefetch_line(0, addr, (GHB[global_pointer].miss_addr + delta_offset) << 6, FILL_L2);
             std::cout << temp << std::endl;
         }
         else
