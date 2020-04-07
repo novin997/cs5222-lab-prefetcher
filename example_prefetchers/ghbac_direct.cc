@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <iostream>
 
-#define GHB_SIZE 512
+#define GHB_SIZE 1024
 #define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
 
@@ -78,89 +78,81 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     long long int next_pointer;
     std::unordered_map<unsigned long long int, int> hash_table;
 
-    if(cache_hit == 0)
-    {
-        #ifdef DEBUG
+    #ifdef DEBUG
+    
+    printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+    std::cout << "Printing GHB Table" << std::endl;
+    for(int i = 0; i < GHB_SIZE; i++)
+    {   
+        std::cout << std::hex << GHB[i].miss_addr << " " << GHB[i].link_pointer << std::endl;
+    } 
+    std::cout << "Printing index Table" << std::endl;
+    std::cout << index_table[ip_index].miss_addr << " " << index_table[ip_index].pointer << " " << ip_index << " " << INDEX_MASK << std::endl;
+    
+    #endif
+
+    /* Access the index table to check if there is such an address */
+    if(index_table[ip_index].miss_addr == addr >> 6)
+    {   
+        /* Add the miss address to the GHB */
+        GHB[global_pointer].miss_addr = addr;
+        GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
+
+        current_pointer = global_pointer;
+
+        /* Iterate the linked list of the GHB to get the Markov Prefetching */
+        /* Iterate until the first pointer or if the address does not match */
+        /* The Hashmap will count the highest occurance of the next prefetch address */
         
-        printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
-        std::cout << "Printing GHB Table" << std::endl;
-        for(int i = 0; i < GHB_SIZE; i++)
-        {   
-            std::cout << std::hex << GHB[i].miss_addr << " " << GHB[i].link_pointer << std::endl;
-        } 
-        std::cout << "Printing index Table" << std::endl;
-        std::cout << index_table[ip_index].miss_addr << " " << index_table[ip_index].pointer << " " << ip_index << " " << INDEX_MASK << std::endl;
-        
-        #endif
-
-        /* Access the index table to check if there is such an address */
-        if(index_table[ip_index].miss_addr == addr >> 6)
-        {   
-            /* Add the miss address to the GHB */
-            GHB[global_pointer].miss_addr = addr;
-            GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
-
-            current_pointer = global_pointer;
-
-            /* Iterate the linked list of the GHB to get the Markov Prefetching */
-            /* Iterate until the first pointer or if the address does not match */
-            /* The Hashmap will count the highest occurance of the next prefetch address */
-            
-            while(GHB[current_pointer].link_pointer != current_pointer && addr != GHB[current_pointer].miss_addr)
-            {
-                if(current_pointer > GHB[current_pointer].link_pointer)
-                    distance += current_pointer-GHB[current_pointer].link_pointer;
-                else
-                    distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
-                
-                if(distance > GHB_SIZE)
-                    break;
-
-                current_pointer = GHB[current_pointer].link_pointer;
-                next_pointer = (current_pointer+1) % GHB_SIZE;
-                temp_addr = GHB[next_pointer].miss_addr;
-                hash_table[temp_addr]++;     
-            }
-
-            /* Find the highest number of occurances in the markov prefetch */
-            int max_count = 0;
-            unsigned long long int dataAddress = 0;
-            for(auto i : hash_table)
-            {
-                if(max_count < i.second)
-                {
-                    dataAddress = i.first;
-                    max_count = i.second;
-                }
-            }
-
-            /* Prefetch the address the highest number of occurances */
-            std::cout << "Prefetching Memory" << std::endl;
-            int temp = l2_prefetch_line(0, addr, dataAddress >> 6, FILL_L2);
-            std::cout << temp << " " << global_pointer << std::endl;
-
-            /* Update index table to the current the pointer */
-            index_table[ip_index].pointer = global_pointer;
-
-        }
-        else
+        while(GHB[current_pointer].link_pointer != current_pointer && addr != GHB[current_pointer].miss_addr)
         {
-            /* If there is no such address, update the index table and GHB */
-            index_table[ip_index].miss_addr = addr >> 6;
-            index_table[ip_index].pointer = global_pointer;
+            if(current_pointer > GHB[current_pointer].link_pointer)
+                distance += current_pointer-GHB[current_pointer].link_pointer;
+            else
+                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
+            
+            if(distance > GHB_SIZE)
+                break;
 
-            GHB[global_pointer].miss_addr = addr >> 6;
-            GHB[global_pointer].link_pointer = global_pointer;
-
+            current_pointer = GHB[current_pointer].link_pointer;
+            next_pointer = (current_pointer+1) % GHB_SIZE;
+            temp_addr = GHB[next_pointer].miss_addr;
+            hash_table[temp_addr]++;     
         }
-        
-        /* Add global_pointer */
-        global_pointer = (global_pointer+1) % GHB_SIZE;
+
+        /* Find the highest number of occurances in the markov prefetch */
+        int max_count = 0;
+        unsigned long long int dataAddress = 0;
+        for(auto i : hash_table)
+        {
+            if(max_count < i.second)
+            {
+                dataAddress = i.first;
+                max_count = i.second;
+            }
+        }
+
+        /* Prefetch the address the highest number of occurances */
+        std::cout << "Prefetching Memory" << std::endl;
+        int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
+        std::cout << temp << " " << global_pointer << std::endl;
+
+        /* Update index table to the current the pointer */
+        index_table[ip_index].pointer = global_pointer;
+
     }
     else
     {
-        /* code */
+        /* If there is no such address, update the index table and GHB */
+        index_table[ip_index].miss_addr = addr >> 6;
+        index_table[ip_index].pointer = global_pointer;
+
+        GHB[global_pointer].miss_addr = addr >> 6;
+        GHB[global_pointer].link_pointer = global_pointer;
     }
+    
+    /* Add global_pointer */
+    global_pointer = (global_pointer+1) % GHB_SIZE;
 }
 
 void l2_cache_fill(int cpu_num, unsigned long long int addr, int set, int way, int prefetch, unsigned long long int evicted_addr)
