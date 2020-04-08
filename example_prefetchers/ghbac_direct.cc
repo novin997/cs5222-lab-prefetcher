@@ -73,29 +73,16 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     // uncomment this line to see all the information available to make prefetch decisions
     unsigned long long int ip_index = ip & INDEX_MASK;
     unsigned long long int temp_addr;
-    unsigned long long int distance;
+    unsigned long long int distance = 0;
     long long int current_pointer = 0;
     long long int next_pointer;
     std::unordered_map<unsigned long long int, int> hash_table;
-
-    #ifdef DEBUG
-    
-    printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
-    std::cout << "Printing GHB Table" << std::endl;
-    for(int i = 0; i < GHB_SIZE; i++)
-    {   
-        std::cout << std::hex << GHB[i].miss_addr << " " << GHB[i].link_pointer << std::endl;
-    } 
-    std::cout << "Printing index Table" << std::endl;
-    std::cout << index_table[ip_index].miss_addr << " " << index_table[ip_index].pointer << " " << ip_index << " " << INDEX_MASK << std::endl;
-    
-    #endif
 
     /* Access the index table to check if there is such an address */
     if(index_table[ip_index].miss_addr == addr >> 6)
     {   
         /* Add the miss address to the GHB */
-        GHB[global_pointer].miss_addr = addr;
+        GHB[global_pointer].miss_addr = addr >> 6;
         GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
 
         current_pointer = global_pointer;
@@ -104,7 +91,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         /* Iterate until the first pointer or if the address does not match */
         /* The Hashmap will count the highest occurance of the next prefetch address */
         
-        while(GHB[current_pointer].link_pointer != current_pointer && addr != GHB[current_pointer].miss_addr)
+        while(GHB[current_pointer].link_pointer != current_pointer && (addr >> 6) == GHB[current_pointer].miss_addr)
         {
             if(current_pointer > GHB[current_pointer].link_pointer)
                 distance += current_pointer-GHB[current_pointer].link_pointer;
@@ -117,7 +104,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             current_pointer = GHB[current_pointer].link_pointer;
             next_pointer = (current_pointer+1) % GHB_SIZE;
             temp_addr = GHB[next_pointer].miss_addr;
-            hash_table[temp_addr]++;     
+            hash_table[temp_addr]++;
+            std::cout << "loop" << std::endl;   
         }
 
         /* Find the highest number of occurances in the markov prefetch */
@@ -132,11 +120,30 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
         }
 
-        /* Prefetch the address the highest number of occurances */
-        std::cout << "Prefetching Memory" << std::endl;
-        int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
-        std::cout << temp << " " << global_pointer << std::endl;
+        #ifdef DEBUG
+        
+        std::cout << global_pointer << std::endl;
+        std::cout << hash_table.size() << " " << (dataAddress >> 6) << std::endl;
 
+        printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
+        std::cout << "Printing GHB Table" << std::endl;
+        for(int i = 0; i < GHB_SIZE; i++)
+        {   
+            std::cout << std::hex << i << " " << GHB[i].miss_addr << " " << GHB[i].link_pointer << std::endl;
+        } 
+        std::cout << "Printing index Table" << std::endl;
+        std::cout << index_table[ip_index].miss_addr << std::endl;
+        
+        #endif
+
+        /* Prefetch the address the highest number of occurances */
+        if(hash_table.size() != 0)
+        {
+            std::cout << "Prefetching Memory" << std::endl;
+            int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
+            std::cout << temp << " " << std::endl;
+        }
+    
         /* Update index table to the current the pointer */
         index_table[ip_index].pointer = global_pointer;
 

@@ -15,7 +15,7 @@
 #include <map>
 #include <iostream>
 
-#define GHB_SIZE 128
+#define GHB_SIZE 2048
 #define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
 
