@@ -17,6 +17,7 @@
 #define GHB_SIZE 1024
 #define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
+#define PREFETCH_DEGREE 4
 
 //#define DEBUG
 
@@ -76,7 +77,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     unsigned long long int distance = 0;
     long long int current_pointer = 0;
     long long int next_pointer;
-    std::unordered_map<unsigned long long int, int> hash_table;
+    int prefetch_count;
 
     /* Access the index table to check if there is such an address */
     if(index_table[ip_index].miss_addr == addr >> 6)
@@ -98,32 +99,32 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             else
                 distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
             
-            if(distance > GHB_SIZE)
+            if(distance > GHB_SIZE || prefetch_count == PREFETCH_DEGREE)
                 break;
 
             current_pointer = GHB[current_pointer].link_pointer;
             next_pointer = (current_pointer+1) % GHB_SIZE;
             temp_addr = GHB[next_pointer].miss_addr;
-            hash_table[temp_addr]++;
-            std::cout << "loop" << std::endl;   
+            l2_prefetch_line(0, addr, temp_addr << 6, FILL_L2);
+            prefetch_count++;
         }
 
-        /* Find the highest number of occurances in the markov prefetch */
-        int max_count = 0;
-        unsigned long long int dataAddress = 0;
-        for(auto i : hash_table)
-        {
-            if(max_count < i.second)
-            {
-                dataAddress = i.first;
-                max_count = i.second;
-            }
-        }
-
+        // /* Find the highest number of occurances in the markov prefetch */
+        // int max_count = 0;
+        // unsigned long long int dataAddress = 0;
+        // for(auto i : hash_table)
+        // {
+        //     if(max_count < i.second)
+        //     {
+        //         dataAddress = i.first;
+        //         max_count = i.second;
+        //     }
+        // }
+        
         #ifdef DEBUG
         
         std::cout << global_pointer << std::endl;
-        std::cout << hash_table.size() << " " << (dataAddress >> 6) << std::endl;
+        std::cout << (dataAddress >> 6) << std::endl;
 
         printf("(0x%llx 0x%llx %d %d %d)\n ", addr, ip, cache_hit, get_l2_read_queue_occupancy(0), get_l2_mshr_occupancy(0));
         std::cout << "Printing GHB Table" << std::endl;
@@ -136,13 +137,13 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         
         #endif
 
-        /* Prefetch the address the highest number of occurances */
-        if(hash_table.size() != 0)
-        {
-            std::cout << "Prefetching Memory" << std::endl;
-            int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
-            std::cout << temp << " " << std::endl;
-        }
+        // /* Prefetch the address the highest number of occurances */
+        // if(hash_table.size() != 0)
+        // {
+        //     std::cout << "Prefetching Memory" << std::endl;
+        //     int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
+        //     std::cout << temp << " " << std::endl;
+        // }
     
         /* Update index table to the current the pointer */
         index_table[ip_index].pointer = global_pointer;

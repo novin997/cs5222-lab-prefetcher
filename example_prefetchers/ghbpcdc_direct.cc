@@ -14,11 +14,13 @@
 #include <unordered_map>
 #include <map>
 #include <iostream>
+#include <stack>
 
 #define GHB_SIZE 2048
 #define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
-
+#define PREFETCH_DEGREE 4
+ 
 //#define DEBUG
 //#define TEST
 
@@ -81,8 +83,8 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     unsigned long long int ip_index = ip & INDEX_MASK;
     long long int current_pointer = 0;
     long long int prev_pointer = (global_pointer-1) % GHB_SIZE;
-    long long int delta_offset;
     std::pair <long long int,long long int> delta_corr;
+    std::stack<long long int> stack;
 
     delta_corr.first = 0;
     delta_corr.second = 0;
@@ -161,6 +163,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         if(distance >= GHB_SIZE)
             break;
         
+        stack.push(GHB[current_pointer].delta);
         if(count == 0)
         {
             delta_corr.second = GHB[current_pointer].delta;
@@ -203,11 +206,11 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         if(distance >= GHB_SIZE)
             break;
 
+        stack.push(GHB[current_pointer].delta);
         if(count == 2)
         {
             if(GHB[current_pointer].delta == delta_corr.second)
             {
-                delta_offset = GHB[(current_pointer+1) % GHB_SIZE].delta;
                 count++;
             }    
         }
@@ -215,12 +218,22 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         {
             if(GHB[current_pointer].delta == delta_corr.first)
             {
-                count++;
+                int temp = 0;
+                long long int prefetch_addr = GHB[global_pointer].miss_addr;
+                stack.pop();
+                stack.pop();
+                while(!stack.empty() && temp < PREFETCH_DEGREE)
+                {  
+                    prefetch_addr += stack.top();
+                    l2_prefetch_line(0, addr, prefetch_addr << 6, FILL_L2);
+                    stack.pop();
+                    temp++;
+                }
                 break;
             }
             else if(GHB[current_pointer].delta == delta_corr.second)
             {
-                delta_offset = GHB[(current_pointer+1) % GHB_SIZE].delta;
+                //Continue the code
             }
             else
             {
@@ -232,22 +245,9 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         printf("stuck in loop 2\n");
         #endif
 
-        current_pointer = GHB[current_pointer].link_pointer;
-        
+        current_pointer = GHB[current_pointer].link_pointer;   
     }
-    
-    //std::cout << count << std::endl;
-
-    if(count == 4)
-    {
-        int temp = l2_prefetch_line(0, addr, (GHB[global_pointer].miss_addr + delta_offset) << 6, FILL_L2);
-        // std::cout << temp << std::endl;
-    }
-    else
-    {
-        
-    }
-        
+      
     index_table[ip_index].delta = GHB[global_pointer].delta;
     index_table[ip_index].pointer = global_pointer;
     
