@@ -16,10 +16,10 @@
 #include <iostream>
 #include <stack>
 
-#define GHB_SIZE 2048
-#define INDEX_SIZE 256
+#define GHB_SIZE 1024
+#define INDEX_SIZE 1024
 #define INDEX_MASK INDEX_SIZE-1
-#define PREFETCH_DEGREE 4
+#define PREFETCH_DEGREE 1
  
 //#define DEBUG
 //#define TEST
@@ -104,12 +104,12 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 
     if(index_table[ip_index].pointer == -1)
     {
-        GHB[global_pointer].miss_addr = addr >> 6;
+        GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = global_pointer;
     }
     else
     {
-        GHB[global_pointer].miss_addr = addr >> 6;
+        GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
     }
 
@@ -225,7 +225,10 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 while(!stack.empty() && temp < PREFETCH_DEGREE)
                 {  
                     prefetch_addr += stack.top();
-                    l2_prefetch_line(0, addr, prefetch_addr << 6, FILL_L2);
+                    if(get_l2_mshr_occupancy(0) < 8)
+                        l2_prefetch_line(0, addr, prefetch_addr, FILL_L2);
+                    else
+                        l2_prefetch_line(0, addr, prefetch_addr, FILL_LLC);
                     stack.pop();
                     temp++;
                 }

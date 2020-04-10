@@ -14,10 +14,11 @@
 #include <unordered_map>
 #include <iostream>
 
-#define GHB_SIZE 1024
-#define INDEX_SIZE 256
+#define GHB_SIZE 128
+#define INDEX_SIZE 1024
 #define INDEX_MASK INDEX_SIZE-1
-#define PREFETCH_DEGREE 4
+#define PREFETCH_DEPTH 8
+#define PREFETCH_WIDTH 1
 
 //#define DEBUG
 
@@ -80,10 +81,10 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     int prefetch_count;
 
     /* Access the index table to check if there is such an address */
-    if(index_table[ip_index].miss_addr == addr >> 6)
+    if(index_table[ip_index].miss_addr == addr)
     {   
         /* Add the miss address to the GHB */
-        GHB[global_pointer].miss_addr = addr >> 6;
+        GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
 
         current_pointer = global_pointer;
@@ -92,35 +93,30 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         /* Iterate until the first pointer or if the address does not match */
         /* The Hashmap will count the highest occurance of the next prefetch address */
         
-        while(GHB[current_pointer].link_pointer != current_pointer && (addr >> 6) == GHB[current_pointer].miss_addr)
+        while(GHB[current_pointer].link_pointer != current_pointer && addr == GHB[current_pointer].miss_addr)
         {
             if(current_pointer > GHB[current_pointer].link_pointer)
                 distance += current_pointer-GHB[current_pointer].link_pointer;
             else
                 distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
             
-            if(distance > GHB_SIZE || prefetch_count == PREFETCH_DEGREE)
+            if(distance > GHB_SIZE || prefetch_count == PREFETCH_DEPTH)
                 break;
 
             current_pointer = GHB[current_pointer].link_pointer;
             next_pointer = (current_pointer+1) % GHB_SIZE;
-            temp_addr = GHB[next_pointer].miss_addr;
-            l2_prefetch_line(0, addr, temp_addr << 6, FILL_L2);
+            for(int i=0; i < PREFETCH_WIDTH; i++)
+            {
+                temp_addr = GHB[next_pointer].miss_addr;
+                if(get_l2_mshr_occupancy(0) < 8)
+                    l2_prefetch_line(0, addr, temp_addr, FILL_L2);
+                else
+                    l2_prefetch_line(0, addr, temp_addr, FILL_LLC);
+                next_pointer = (next_pointer+1) % GHB_SIZE;
+            }
             prefetch_count++;
         }
-
-        // /* Find the highest number of occurances in the markov prefetch */
-        // int max_count = 0;
-        // unsigned long long int dataAddress = 0;
-        // for(auto i : hash_table)
-        // {
-        //     if(max_count < i.second)
-        //     {
-        //         dataAddress = i.first;
-        //         max_count = i.second;
-        //     }
-        // }
-        
+     
         #ifdef DEBUG
         
         std::cout << global_pointer << std::endl;
@@ -136,15 +132,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         std::cout << index_table[ip_index].miss_addr << std::endl;
         
         #endif
-
-        // /* Prefetch the address the highest number of occurances */
-        // if(hash_table.size() != 0)
-        // {
-        //     std::cout << "Prefetching Memory" << std::endl;
-        //     int temp = l2_prefetch_line(0, addr, dataAddress << 6, FILL_L2);
-        //     std::cout << temp << " " << std::endl;
-        // }
-    
+  
         /* Update index table to the current the pointer */
         index_table[ip_index].pointer = global_pointer;
 
@@ -152,10 +140,10 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     else
     {
         /* If there is no such address, update the index table and GHB */
-        index_table[ip_index].miss_addr = addr >> 6;
+        index_table[ip_index].miss_addr = addr;
         index_table[ip_index].pointer = global_pointer;
 
-        GHB[global_pointer].miss_addr = addr >> 6;
+        GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = global_pointer;
     }
     
