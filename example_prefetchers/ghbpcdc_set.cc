@@ -16,7 +16,7 @@
 #include <iostream>
 #include <stack>
 
-#define GHB_SIZE 1024
+#define GHB_SIZE 256
 #define INDEX_SIZE 256
 #define PREFETCH_DEGREE 1
 #define SET_ASSOCIATION 4

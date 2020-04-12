@@ -14,11 +14,11 @@
 #include <unordered_map>
 #include <iostream>
 
-#define GHB_SIZE 128
-#define INDEX_SIZE 1024
+#define GHB_SIZE 256
+#define INDEX_SIZE 256
 #define INDEX_MASK INDEX_SIZE-1
-#define PREFETCH_DEPTH 8
-#define PREFETCH_WIDTH 1
+#define PREFETCH_DEPTH 2
+#define PREFETCH_WIDTH 2
 
 //#define DEBUG
 
@@ -98,7 +98,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             if(current_pointer > GHB[current_pointer].link_pointer)
                 distance += current_pointer-GHB[current_pointer].link_pointer;
             else
-                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer-current_pointer;
+                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer;
             
             if(distance > GHB_SIZE || prefetch_count == PREFETCH_DEPTH)
                 break;

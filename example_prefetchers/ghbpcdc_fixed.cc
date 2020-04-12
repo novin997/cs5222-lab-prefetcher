@@ -16,10 +16,10 @@
 #include <iostream>
 #include <stack>
 
-#define GHB_SIZE 256
-#define INDEX_SIZE 256
+#define GHB_SIZE 1024
+#define INDEX_SIZE 1024
 #define INDEX_MASK INDEX_SIZE-1
-#define PREFETCH_DEGREE 8
+#define PREFETCH_DEGREE 1
  
 //#define DEBUG
 //#define TEST
