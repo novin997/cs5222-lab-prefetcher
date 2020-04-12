@@ -16,8 +16,8 @@
 #include <iostream>
 #include <stack>
 
-#define GHB_SIZE 256
-#define INDEX_SIZE 1024
+#define GHB_SIZE 1024
+#define INDEX_SIZE 256
 #define PREFETCH_DEGREE 1
 #define SET_ASSOCIATION 4
 #define SET_SIZE INDEX_SIZE/SET_ASSOCIATION
@@ -96,6 +96,20 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         {
             GHB[global_pointer].miss_addr = addr;
             GHB[global_pointer].link_pointer = index_table[ip_index+j*SET_SIZE].pointer;
+
+            for(std::deque<int>::iterator it = lru[ip_index].begin(); it != lru[ip_index].end();)
+            {
+                if(*it == j)
+                {
+                    it = lru[ip_index].erase(it);
+                    break;
+                } 
+                else
+                    it++;
+            }
+            
+            lru[ip_index].push_front(j);
+            index_table[ip_index+j*SET_SIZE].pointer = global_pointer;
             break;
         }
         else if(index_table[ip_index+j*SET_SIZE].pointer == -1)
@@ -104,15 +118,29 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             GHB[global_pointer].link_pointer = global_pointer;
 
             index_table[ip_index+j*SET_SIZE].pointer = global_pointer;
+            index_table[ip_index+j*SET_SIZE].ip = ip;
 
             lru[ip_index].push_front(j);
 
             global_pointer = (global_pointer+1) % GHB_SIZE;
             return;
         }
+        
+        //All the index are full
         if(j == SET_ASSOCIATION-1)
         {
-            
+            int i = lru[ip_index].back();
+            lru[ip_index].pop_back();
+            lru[ip_index].push_front(i);
+
+            GHB[global_pointer].miss_addr = addr;
+            GHB[global_pointer].link_pointer = global_pointer;
+
+            index_table[ip_index+i*SET_SIZE].pointer = global_pointer;
+            index_table[ip_index+i*SET_SIZE].ip = ip;
+
+            global_pointer = (global_pointer+1) % GHB_SIZE;
+            return;
         }
     }
     
@@ -230,9 +258,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         }
         current_pointer = prev_pointer;   
     }
-    
-    index_table[ip_index].pointer = global_pointer;
-    
+
     /* Add global_pointer */
     global_pointer = (global_pointer+1) % GHB_SIZE;
     
