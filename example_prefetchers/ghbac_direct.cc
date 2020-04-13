@@ -15,10 +15,10 @@
 #include <iostream>
 
 #define GHB_SIZE 256
-#define INDEX_SIZE 256
+#define INDEX_SIZE 1024
 #define INDEX_MASK INDEX_SIZE-1
-#define PREFETCH_DEPTH 2
-#define PREFETCH_WIDTH 2
+#define PREFETCH_DEPTH 1
+#define PREFETCH_WIDTH 1
 
 //#define DEBUG
 
@@ -77,33 +77,37 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     unsigned long long int temp_addr;
     unsigned long long int distance = 0;
     long long int current_pointer = 0;
+    long long int prev_pointer = 0;
     long long int next_pointer;
     int prefetch_count;
 
     /* Access the index table to check if there is such an address */
     if(index_table[ip_index].miss_addr == addr)
     {   
+
         /* Add the miss address to the GHB */
         GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
 
         current_pointer = global_pointer;
+        prev_pointer = GHB[current_pointer].link_pointer;
 
         /* Iterate the linked list of the GHB to get the Markov Prefetching */
         /* Iterate until the first pointer or if the address does not match */
         /* The Hashmap will count the highest occurance of the next prefetch address */
         
-        while(GHB[current_pointer].link_pointer != current_pointer && addr == GHB[current_pointer].miss_addr)
+        while(prev_pointer != current_pointer && addr == GHB[current_pointer].miss_addr)
         {
-            if(current_pointer > GHB[current_pointer].link_pointer)
-                distance += current_pointer-GHB[current_pointer].link_pointer;
+            if(current_pointer > prev_pointer)
+                distance += current_pointer-prev_pointer;
             else
-                distance += current_pointer + GHB_SIZE - GHB[current_pointer].link_pointer;
+                distance += current_pointer + GHB_SIZE - prev_pointer;
             
             if(distance > GHB_SIZE || prefetch_count == PREFETCH_DEPTH)
                 break;
 
-            current_pointer = GHB[current_pointer].link_pointer;
+            current_pointer = prev_pointer;
+            prev_pointer = GHB[current_pointer].link_pointer;
             next_pointer = (current_pointer+1) % GHB_SIZE;
             for(int i=0; i < PREFETCH_WIDTH; i++)
             {
@@ -113,6 +117,7 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                 else
                     l2_prefetch_line(0, addr, temp_addr, FILL_LLC);
                 next_pointer = (next_pointer+1) % GHB_SIZE;
+                std::cout << std::hex << addr << " " << temp_addr << std::endl;
             }
             prefetch_count++;
         }
