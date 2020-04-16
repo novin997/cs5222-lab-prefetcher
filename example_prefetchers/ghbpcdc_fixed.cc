@@ -16,9 +16,16 @@
 #include <iostream>
 #include <stack>
 
+// Global History Buffer Size
 #define GHB_SIZE 1024
+
+// Index Table Size
 #define INDEX_SIZE 1024
+
+// Index Table Mask to index the instruction address
 #define INDEX_MASK INDEX_SIZE-1
+
+// Prefetch Degree refers to the width prefetching 
 #define PREFETCH_DEGREE 1
  
 //#define DEBUG
@@ -82,8 +89,10 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     delta_corr.first = 0;
     delta_corr.second = 0;
 
+    // Check if the index table is empty or not
     if(index_table[ip_index].pointer == -1)
     {
+        // if index table is empty, add current miss addr to the GHB and update the index table
         GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = global_pointer;
 
@@ -94,11 +103,13 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
     }
     else
     {
+        // if index table is not empty, add the miss addr to the GHB 
+        // and use the pointer that is in the index table 
         GHB[global_pointer].miss_addr = addr;
         GHB[global_pointer].link_pointer = index_table[ip_index].pointer;
     }
 
-    // Find the first pair of delta correleration
+    // Find the first pair of delta values
     current_pointer = global_pointer;
     int count = 0;
 
@@ -117,8 +128,11 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
 
     unsigned long long int distance = 0;
 
+    //Keep iterating until as long as we have not reach the end
+    //The end of the linked list is indicated when the current_pointer = link pointer
     while(current_pointer != GHB[current_pointer].link_pointer)
     {
+        //We use a variable distance to keep track of how much we have iterate through the circular buffer 
         prev_pointer = GHB[current_pointer].link_pointer;
         if(current_pointer > prev_pointer)
         {
@@ -132,17 +146,19 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         if(distance >= GHB_SIZE)
             break;
         
-        //Calculate Delta Offset  
+        //Calculate Delta values and add them into a stack  
         delta_offset = GHB[current_pointer].miss_addr - GHB[prev_pointer].miss_addr;
         stack.push(delta_offset);
         if(count == 0)
         {
+            //Add the second delta value of the pair
             delta_corr.second = stack.top();
             count++;
             current_pointer = prev_pointer;
         }    
         else if(count == 1)
         {
+            //Add the first delta value of the pair
             delta_corr.first = stack.top();
             count++;
             current_pointer = prev_pointer;
@@ -150,9 +166,10 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         }
     }
         
-    // Find the next delta pattern that correlate the pair of delta values
+    // Find the next reoccurance of the delta pair
     while(current_pointer != GHB[current_pointer].link_pointer)
     {
+        //We use a variable distance to keep track of how much we have iterate through the circular buffer 
         prev_pointer = GHB[current_pointer].link_pointer;
         if(current_pointer > prev_pointer)
         {
@@ -166,27 +183,27 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
         if(distance >= GHB_SIZE)
             break;
 
+        
         delta_offset = GHB[current_pointer].miss_addr - GHB[prev_pointer].miss_addr;
         stack.push(delta_offset);
         if(count == 2)
         {
+            //when the second delta value of the pair match with the current delta value
             if(delta_offset == delta_corr.second)
             {
                 count++;
             }    
         }
         else if(count == 3)
-        {
+        { 
             if(delta_offset == delta_corr.first)
             {
+                //There is a match with the delta pair
                 int temp = 0;
                 long long int prefetch_addr = addr;
-                // std::cout << "start" << std::endl;
-                // std::cout << delta_corr.first << " " << delta_corr.second << std::endl;
-                // std::cout << stack.top() << std::endl;
                 stack.pop();
-                // std::cout << stack.top() << std::endl;
                 stack.pop();
+                //Iterate through the stack to get the next delta values and add them to the current miss address and prefetch them
                 while(!stack.empty() && temp < PREFETCH_DEGREE)
                 {  
                     int test;
@@ -195,7 +212,6 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
                         l2_prefetch_line(0, addr, prefetch_addr, FILL_L2);
                     else
                         l2_prefetch_line(0, addr, prefetch_addr, FILL_LLC);
-                    // std::cout << test << " " << stack.top() << " " << prefetch_addr << std::endl;
                     stack.pop();
                     temp++;
                 }
@@ -203,7 +219,9 @@ void l2_prefetcher_operate(int cpu_num, unsigned long long int addr, unsigned lo
             }
             else if(delta_offset == delta_corr.second)
             {
-                //Continue the code
+                // Continue the code
+                // This code is put here to take on the condition where the 
+                // first value and the second value is the same for example 3,3
             }
             else
             {
