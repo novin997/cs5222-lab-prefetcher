@@ -4,10 +4,8 @@
 //
 
 /*
-
-  This file does NOT implement any prefetcher, and is just an outline
-
- */
+  This file implement the GHB PC/DC with the index table being set-associative 
+*/
 
 #include <stdio.h>
 #include "../inc/prefetcher.h"
